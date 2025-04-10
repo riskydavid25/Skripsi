@@ -7,43 +7,47 @@
 #include <HardwareSerial.h>
 #include <ArduinoJson.h>
 #include <BlynkSimpleEsp32.h>
+#include <time.h>
 
-// === OLED Setup ===
+// OLED
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// === DFPlayer Setup ===
+// DFPlayer
 HardwareSerial mySerial(2);  // RX = 16, TX = 17
 DFRobotDFPlayerMini dfPlayer;
 
-// === MQTT Setup ===
+// MQTT
 WiFiClient espClient;
 PubSubClient client(espClient);
 const char *mqtt_server = "broker.emqx.io";
 
-// === Blynk Setup ===
-char auth[] = "cjqSPyXSlzm32sMLG0JOfH7ANlSvqe8M"; // Ganti dengan token Blynk Anda
+// Blynk
+char auth[] = "cjqSPyXSlzm32sMLG0JOfH7ANlSvqe8M";
 
-// === WiFi LED Status ===
+// LED WiFi
 #define LED_WIFI 14
 bool wifiConnected = false;
 unsigned long lastBlink = 0;
 bool ledState = false;
 
-// === Status dan Waktu Terakhir ===
+// Status Sender
 String statusSender[6] = {"OFF", "OFF", "OFF", "OFF", "OFF", "OFF"};
 unsigned long lastMessageTime[6] = {0, 0, 0, 0, 0, 0};
 const unsigned long debounceDelay = 1000;
 
-// === Setup Display ===
+// Data tambahan
+int lastCount[6] = {0};
+int lastRSSI[6] = {0};
+
+// Setup OLED
 void setupDisplay() {
   Wire.begin(21, 22);
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println("OLED Gagal Inisialisasi");
     while (1);
   }
-
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(WHITE);
@@ -65,7 +69,7 @@ void setupDisplay() {
   delay(2000);
 }
 
-// === Update OLED Display ===
+// Update OLED
 void updateDisplay() {
   display.clearDisplay();
   display.setTextSize(1);
@@ -76,15 +80,26 @@ void updateDisplay() {
   display.display();
 }
 
-// === Set Blynk LED Status ===
+// Set LED Blynk
 void setBlynkLED(int senderIndex, bool call, bool bill) {
   int basePin = senderIndex * 3;
-  Blynk.virtualWrite(V1 + basePin, call ? 1 : 0);     // Call LED
-  Blynk.virtualWrite(V2 + basePin, bill ? 1 : 0);     // Bill LED
-  Blynk.virtualWrite(V3 + basePin, (!call && !bill) ? 1 : 0);  // Reset LED
+  Blynk.virtualWrite(V1 + basePin, call ? 1 : 0);
+  Blynk.virtualWrite(V2 + basePin, bill ? 1 : 0);
+  Blynk.virtualWrite(V3 + basePin, (!call && !bill) ? 1 : 0);
 }
 
-// === Kirim Reset ke Sender via MQTT ===
+// Waktu timestamp lokal
+String getTimeString() {
+  time_t now;
+  struct tm timeinfo;
+  time(&now);
+  localtime_r(&now, &timeinfo);
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(buf);
+}
+
+// Kirim reset dengan payload lengkap
 void publishResetToSender(int senderIndex) {
   const char* senderIds[] = {"ESP32_Sender1", "ESP32_Sender2", "ESP32_Sender3"};
   if (senderIndex < 0 || senderIndex > 2) return;
@@ -92,38 +107,28 @@ void publishResetToSender(int senderIndex) {
   const char* targetSenderId = senderIds[senderIndex];
   Serial.printf("Mengirim RESET ke %s\n", targetSenderId);
 
-  // Reset call
-  {
-    StaticJsonDocument<128> doc;
-    doc["id"] = "ESP32_Receiver";
-    doc["target"] = targetSenderId;
-    doc["type"] = "call";
-    doc["status"] = false;
+  String timeString = getTimeString();
 
-    char buffer[128];
-    size_t len = serializeJson(doc, buffer);
-    String topic = String("waitress/") + targetSenderId + "/call";
-    client.publish(topic.c_str(), buffer, len);
-    Serial.printf("-> call reset: %s\n", buffer);
-  }
+  for (int i = 0; i < 2; i++) {
+    String type = (i == 0) ? "call" : "bill";
+    int index = senderIndex * 2 + i;
 
-  // Reset bill
-  {
-    StaticJsonDocument<128> doc;
-    doc["id"] = "ESP32_Receiver";
-    doc["target"] = targetSenderId;
-    doc["type"] = "bill";
-    doc["status"] = false;
+    String payload = "{";
+    payload += "\"id\":\"ESP32_Receiver\",";
+    payload += "\"type\":\"" + type + "\",";
+    payload += "\"status\":false,";
+    payload += "\"count\":" + String(lastCount[index]) + ",";
+    payload += "\"rssi\":" + String(lastRSSI[index]) + ",";
+    payload += "\"timestamp\":\"" + timeString + "\"";
+    payload += "}";
 
-    char buffer[128];
-    size_t len = serializeJson(doc, buffer);
-    String topic = String("waitress/") + targetSenderId + "/bill";
-    client.publish(topic.c_str(), buffer, len);
-    Serial.printf("-> bill reset: %s\n", buffer);
+    String topic = "waitress/" + String(targetSenderId) + "/" + type;
+    client.publish(topic.c_str(), payload.c_str());
+    Serial.printf("-> %s reset: %s\n", type.c_str(), payload.c_str());
   }
 }
 
-// === Reset Status Sender dari Blynk ===
+// Reset oleh Blynk
 BLYNK_WRITE(V10) { resetSender(0); }
 BLYNK_WRITE(V11) { resetSender(1); }
 BLYNK_WRITE(V12) { resetSender(2); }
@@ -137,12 +142,11 @@ void resetSender(int senderIndex) {
 
   setBlynkLED(senderIndex, false, false);
   updateDisplay();
-
   Serial.printf("Sender %d di-reset oleh Blynk\n", senderIndex + 1);
   publishResetToSender(senderIndex);
 }
 
-// === MQTT Callback ===
+// MQTT callback
 void callback(char* topic, byte* payload, unsigned int length) {
   StaticJsonDocument<256> doc;
   DeserializationError error = deserializeJson(doc, payload, length);
@@ -155,6 +159,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   String senderId = doc["id"];
   String type = doc["type"];
   bool status = doc["status"];
+  int count = doc["count"] | 0;
+  int rssi = doc["rssi"] | 0;
   unsigned long currentMillis = millis();
 
   int senderIndex = -1;
@@ -174,8 +180,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
       if (type == "bill") statusSender[senderIndex * 2] = "OFF";
     }
 
-    updateDisplay();
+    lastCount[index] = count;
+    lastRSSI[index] = rssi;
 
+    updateDisplay();
     bool callOn = statusSender[senderIndex * 2] == "ON";
     bool billOn = statusSender[senderIndex * 2 + 1] == "ON";
     setBlynkLED(senderIndex, callOn, billOn);
@@ -188,7 +196,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// === Reconnect MQTT ===
+// Reconnect MQTT
 void reconnect() {
   while (!client.connected()) {
     Serial.print("[MQTT] Menghubungkan...");
@@ -215,9 +223,11 @@ void setup() {
     Serial.println("[DFPlayer] Gagal inisialisasi!");
     while (1);
   }
-  dfPlayer.volume(30);
+  dfPlayer.volume(25);
 
   setupDisplay();
+
+  configTime(25200, 0, "pool.ntp.org");  // WIB offset 7 jam
 
   WiFiManager wm;
   wm.setConfigPortalTimeout(60);
