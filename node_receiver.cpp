@@ -216,7 +216,7 @@ void reconnect() {
 void setup() {
   Serial.begin(115200);
   pinMode(LED_WIFI, OUTPUT);
-  digitalWrite(LED_WIFI, HIGH);
+  digitalWrite(LED_WIFI, HIGH); // Menyala terus sebelum konek WiFi
 
   mySerial.begin(9600, SERIAL_8N1, 16, 17);
   if (!dfPlayer.begin(mySerial)) {
@@ -226,7 +226,6 @@ void setup() {
   dfPlayer.volume(25);
 
   setupDisplay();
-
   configTime(25200, 0, "pool.ntp.org");  // WIB offset 7 jam
 
   WiFiManager wm;
@@ -246,11 +245,15 @@ void loop() {
 
   wifiConnected = WiFi.status() == WL_CONNECTED;
 
-  if (wifiConnected && millis() - lastBlink >= 500) {
-    lastBlink = millis();
-    ledState = !ledState;
-    digitalWrite(LED_WIFI, ledState);
+  if (wifiConnected) {
+    // LED berkedip jika WiFi tersambung
+    if (millis() - lastBlink >= 500) {
+      lastBlink = millis();
+      ledState = !ledState;
+      digitalWrite(LED_WIFI, ledState);
+    }
   } else {
+    // LED menyala terus jika WiFi tidak tersambung
     digitalWrite(LED_WIFI, HIGH);
   }
 
