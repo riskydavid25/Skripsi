@@ -24,7 +24,6 @@ int lastResetState = HIGH;
 
 int callCount = 0;
 int billCount = 0;
-bool wifiConnected = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -42,7 +41,7 @@ void setup() {
 
   digitalWrite(greenLed, LOW);
   digitalWrite(blueLed, LOW);
-  digitalWrite(wifiLed, HIGH);
+  digitalWrite(wifiLed, HIGH); // Nyala solid saat belum WiFi
 
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
@@ -67,7 +66,6 @@ void setup_wifi() {
     ESP.restart();
   }
   Serial.println("WiFi connected: " + WiFi.localIP().toString());
-  wifiConnected = true;
 }
 
 void reconnect() {
@@ -75,8 +73,8 @@ void reconnect() {
     Serial.print("MQTT reconnect...");
     if (client.connect(mqtt_client_id)) {
       Serial.println("connected");
-      client.subscribe("waitress/reset");                        // Dari Receiver (global reset)
-      client.subscribe("waitress/ESP32_Sender1/call");           // Dari Receiver (per type)
+      client.subscribe("waitress/reset");
+      client.subscribe("waitress/ESP32_Sender1/call");
       client.subscribe("waitress/ESP32_Sender1/bill");
     } else {
       Serial.print("failed, rc=");
@@ -105,7 +103,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   const char* type = doc["type"];
   bool status = doc["status"];
 
-  // Jika pesan berasal dari receiver dan status false (reset)
   if (String(fromID) == "ESP32_Receiver" && status == false) {
     if (String(type) == "call" || String(type) == "bill") {
       resetSystem();
@@ -147,20 +144,16 @@ void resetSystem() {
 }
 
 void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-  } else {
-    wifiConnected = false;
-  }
-
   static unsigned long lastBlinkTime = 0;
-  if (wifiConnected) {
+
+  // LED WiFi: blinking jika terkoneksi, solid jika belum
+  if (WiFi.status() == WL_CONNECTED) {
     if (millis() - lastBlinkTime > 500) {
       digitalWrite(wifiLed, !digitalRead(wifiLed));
       lastBlinkTime = millis();
     }
   } else {
-    digitalWrite(wifiLed, HIGH);
+    digitalWrite(wifiLed, HIGH); // Solid merah saat tidak tersambung
   }
 
   if (!client.connected()) {
