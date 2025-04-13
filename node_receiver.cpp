@@ -21,7 +21,7 @@ DFRobotDFPlayerMini dfPlayer;
 // MQTT
 WiFiClient espClient;
 PubSubClient client(espClient);
-const char *mqtt_server = "broker.emqx.io";
+const char *mqtt_server = "18.140.66.74";
 
 // Blynk
 char auth[] = "cjqSPyXSlzm32sMLG0JOfH7ANlSvqe8M";
