@@ -24,7 +24,6 @@ int lastResetState = HIGH;
 
 int callCount = 0;
 int billCount = 0;
-bool wifiConnected = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -42,7 +41,7 @@ void setup() {
 
   digitalWrite(greenLed, LOW);
   digitalWrite(blueLed, LOW);
-  digitalWrite(wifiLed, HIGH);
+  digitalWrite(wifiLed, HIGH); // Nyala solid saat belum WiFi
 
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
@@ -67,7 +66,6 @@ void setup_wifi() {
     ESP.restart();
   }
   Serial.println("WiFi connected: " + WiFi.localIP().toString());
-  wifiConnected = true;
 }
 
 void reconnect() {
@@ -75,8 +73,8 @@ void reconnect() {
     Serial.print("MQTT reconnect...");
     if (client.connect(mqtt_client_id)) {
       Serial.println("connected");
-      client.subscribe("waitress/reset");                        // Dari Receiver (global reset)
-      client.subscribe("waitress/ESP32_Sender3/call");           // Dari Receiver (per type)
+      client.subscribe("waitress/reset");
+      client.subscribe("waitress/ESP32_Sender3/call");
       client.subscribe("waitress/ESP32_Sender3/bill");
     } else {
       Serial.print("failed, rc=");
@@ -105,7 +103,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   const char* type = doc["type"];
   bool status = doc["status"];
 
-  // Jika pesan berasal dari receiver dan status false (reset)
   if (String(fromID) == "ESP32_Receiver" && status == false) {
     if (String(type) == "call" || String(type) == "bill") {
       resetSystem();
@@ -113,14 +110,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-void sendMessage(const char* type, bool status, int count) {
-  time_t now = time(nullptr);
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
-
-  char timeString[40];
-  strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
-
+void sendMessage(const char* type, bool status, int count, const char* timestamp) {
   int rssi = WiFi.RSSI();
   String topic = "waitress/" + String(senderID) + "/" + String(type);
 
@@ -130,7 +120,7 @@ void sendMessage(const char* type, bool status, int count) {
   payload += "\"status\":" + String(status ? "true" : "false") + ",";
   payload += "\"count\":" + String(count) + ",";
   payload += "\"rssi\":" + String(rssi) + ",";
-  payload += "\"timestamp\":\"" + String(timeString) + "\"";
+  payload += "\"timestamp\":\"" + String(timestamp) + "\"";
   payload += "}";
 
   client.publish(topic.c_str(), payload.c_str(), true);
@@ -141,26 +131,30 @@ void resetSystem() {
   digitalWrite(greenLed, LOW);
   digitalWrite(blueLed, LOW);
 
-  sendMessage("call", false, callCount);
-  sendMessage("bill", false, billCount);
+  // Mendapatkan waktu reset
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  char timeString[40];
+  strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+  sendMessage("call", false, callCount, timeString);
+  sendMessage("bill", false, billCount, timeString);
   Serial.println("🔄 Reset System");
 }
 
 void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-  } else {
-    wifiConnected = false;
-  }
-
   static unsigned long lastBlinkTime = 0;
-  if (wifiConnected) {
+
+  // LED WiFi: blinking jika terkoneksi, solid jika belum
+  if (WiFi.status() == WL_CONNECTED) {
     if (millis() - lastBlinkTime > 500) {
       digitalWrite(wifiLed, !digitalRead(wifiLed));
       lastBlinkTime = millis();
     }
   } else {
-    digitalWrite(wifiLed, HIGH);
+    digitalWrite(wifiLed, HIGH); // Solid merah saat tidak tersambung
   }
 
   if (!client.connected()) {
@@ -176,8 +170,8 @@ void loop() {
     callCount++;
     digitalWrite(greenLed, HIGH);
     digitalWrite(blueLed, LOW);
-    sendMessage("call", true, callCount);
-    sendMessage("bill", false, billCount);
+    sendMessage("call", true, callCount, "");
+    sendMessage("bill", false, billCount, "");
     delay(200);
   }
 
@@ -185,8 +179,8 @@ void loop() {
     billCount++;
     digitalWrite(greenLed, LOW);
     digitalWrite(blueLed, HIGH);
-    sendMessage("call", false, callCount);
-    sendMessage("bill", true, billCount);
+    sendMessage("call", false, callCount, "");
+    sendMessage("bill", true, billCount, "");
     delay(200);
   }
 
