@@ -110,14 +110,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-void sendMessage(const char* type, bool status, int count) {
-  time_t now = time(nullptr);
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
-
-  char timeString[40];
-  strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
-
+void sendMessage(const char* type, bool status, int count, const char* timestamp) {
   int rssi = WiFi.RSSI();
   String topic = "waitress/" + String(senderID) + "/" + String(type);
 
@@ -127,7 +120,7 @@ void sendMessage(const char* type, bool status, int count) {
   payload += "\"status\":" + String(status ? "true" : "false") + ",";
   payload += "\"count\":" + String(count) + ",";
   payload += "\"rssi\":" + String(rssi) + ",";
-  payload += "\"timestamp\":\"" + String(timeString) + "\"";
+  payload += "\"timestamp\":\"" + String(timestamp) + "\"";
   payload += "}";
 
   client.publish(topic.c_str(), payload.c_str(), true);
@@ -138,8 +131,16 @@ void resetSystem() {
   digitalWrite(greenLed, LOW);
   digitalWrite(blueLed, LOW);
 
-  sendMessage("call", false, callCount);
-  sendMessage("bill", false, billCount);
+  // Mendapatkan waktu reset
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  char timeString[40];
+  strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
+
+  sendMessage("call", false, callCount, timeString);
+  sendMessage("bill", false, billCount, timeString);
   Serial.println("🔄 Reset System");
 }
 
@@ -169,8 +170,8 @@ void loop() {
     callCount++;
     digitalWrite(greenLed, HIGH);
     digitalWrite(blueLed, LOW);
-    sendMessage("call", true, callCount);
-    sendMessage("bill", false, billCount);
+    sendMessage("call", true, callCount, "");
+    sendMessage("bill", false, billCount, "");
     delay(200);
   }
 
@@ -178,8 +179,8 @@ void loop() {
     billCount++;
     digitalWrite(greenLed, LOW);
     digitalWrite(blueLed, HIGH);
-    sendMessage("call", false, callCount);
-    sendMessage("bill", true, billCount);
+    sendMessage("call", false, callCount, "");
+    sendMessage("bill", true, billCount, "");
     delay(200);
   }
 
