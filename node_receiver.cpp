@@ -188,6 +188,19 @@ void callback(char* topic, byte* payload, unsigned int length) {
     bool billOn = statusSender[senderIndex * 2 + 1] == "ON";
     setBlynkLED(senderIndex, callOn, billOn);
 
+    // Kirim timestamp ke Blynk per sender
+    String timeString = getTimeString();
+    int timestampPin = V13 + senderIndex; 
+    Blynk.virtualWrite(timestampPin, timeString);
+
+    String timeString = getTimeString();
+    int timestampPin = V14 + senderIndex; 
+    Blynk.virtualWrite(timestampPin, timeString);
+    
+    String timeString = getTimeString();
+    int timestampPin = V15 + senderIndex; 
+    Blynk.virtualWrite(timestampPin, timeString);
+    
     if (status) {
       dfPlayer.play(index + 1);
     }
