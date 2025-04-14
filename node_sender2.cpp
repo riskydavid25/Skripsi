@@ -5,7 +5,7 @@
 #include <time.h>
 
 // Konfigurasi MQTT
-const char* mqtt_server = "broker.emqx.io";
+const char* mqtt_server = "18.140.66.74";
 const int mqtt_port = 1883;
 const char* mqtt_client_id = "ESP32_Sender2";
 const char* senderID = "ESP32_Sender2";
