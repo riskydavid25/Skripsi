@@ -229,7 +229,7 @@ void setup() {
     Serial.println("[DFPlayer] Gagal inisialisasi!");
     while (1);
   }
-  dfPlayer.volume(25);
+  dfPlayer.volume(30);
 
   setupDisplay();
   configTime(25200, 0, "pool.ntp.org");
