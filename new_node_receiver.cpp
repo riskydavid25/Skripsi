@@ -69,7 +69,7 @@ void setupDisplay() {
   delay(2000);
 }
 
-// Update OLED (tanpa timestamp)
+// Update OLED
 void updateDisplay() {
   display.clearDisplay();
   display.setTextSize(1);
@@ -88,7 +88,7 @@ void setBlynkLED(int senderIndex, bool call, bool bill) {
   Blynk.virtualWrite(V3 + basePin, (!call && !bill) ? 1 : 0);
 }
 
-// Waktu timestamp lokal
+// Timestamp lokal
 String getTimeString() {
   time_t now;
   struct tm timeinfo;
@@ -99,7 +99,7 @@ String getTimeString() {
   return String(buf);
 }
 
-// Kirim reset dengan payload lengkap
+// Kirim reset ke Sender
 void publishResetToSender(int senderIndex) {
   const char* senderIds[] = {"ESP32_Sender1", "ESP32_Sender2", "ESP32_Sender3"};
   if (senderIndex < 0 || senderIndex > 2) return;
@@ -128,7 +128,7 @@ void publishResetToSender(int senderIndex) {
   }
 }
 
-// Reset oleh Blynk
+// Reset dari Blynk
 BLYNK_WRITE(V10) { resetSender(0); }
 BLYNK_WRITE(V11) { resetSender(1); }
 BLYNK_WRITE(V12) { resetSender(2); }
@@ -146,7 +146,7 @@ void resetSender(int senderIndex) {
   publishResetToSender(senderIndex);
 }
 
-// MQTT callback
+// MQTT Callback
 void callback(char* topic, byte* payload, unsigned int length) {
   StaticJsonDocument<256> doc;
   DeserializationError error = deserializeJson(doc, payload, length);
@@ -188,30 +188,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
     bool billOn = statusSender[senderIndex * 2 + 1] == "ON";
     setBlynkLED(senderIndex, callOn, billOn);
 
-    // Kirim timestamp ke Blynk per sender
     String timeString = getTimeString();
-    if (senderIndex == 0) { // Sender1 ke V13
-      Blynk.virtualWrite(V13, timeString);
-    }
-    if (senderIndex == 1) { // Sender2 ke V14
-      Blynk.virtualWrite(V14, timeString);
-    }
-    if (senderIndex == 2) { // Sender3 ke V15
-      Blynk.virtualWrite(V15, timeString);
-    }
+    if (senderIndex == 0) Blynk.virtualWrite(V13, timeString);
+    if (senderIndex == 1) Blynk.virtualWrite(V14, timeString);
+    if (senderIndex == 2) Blynk.virtualWrite(V15, timeString);
 
-    // Kirim timestamp ke Node-RED (optional)
-    client.publish("node-red/timestamp/" + String(senderId), timeString.c_str());
+    // ✅ Perbaikan error publish
+    String timestampTopic = "node-red/timestamp/" + String(senderId);
+    client.publish(timestampTopic.c_str(), timeString.c_str());
 
-    if (status) {
-      dfPlayer.play(index + 1);
-    }
-
+    if (status) dfPlayer.play(index + 1);
     lastMessageTime[index] = currentMillis;
   }
 }
 
-// Reconnect MQTT
+// MQTT Reconnect
 void reconnect() {
   while (!client.connected()) {
     Serial.print("[MQTT] Menghubungkan...");
@@ -231,7 +222,7 @@ void reconnect() {
 void setup() {
   Serial.begin(115200);
   pinMode(LED_WIFI, OUTPUT);
-  digitalWrite(LED_WIFI, HIGH); // Menyala terus sebelum konek WiFi
+  digitalWrite(LED_WIFI, HIGH);
 
   mySerial.begin(9600, SERIAL_8N1, 16, 17);
   if (!dfPlayer.begin(mySerial)) {
@@ -241,7 +232,7 @@ void setup() {
   dfPlayer.volume(25);
 
   setupDisplay();
-  configTime(25200, 0, "pool.ntp.org");  // WIB offset 7 jam
+  configTime(25200, 0, "pool.ntp.org");
 
   WiFiManager wm;
   wm.setConfigPortalTimeout(60);
@@ -257,19 +248,15 @@ void setup() {
 
 void loop() {
   Blynk.run();
-
   wifiConnected = WiFi.status() == WL_CONNECTED;
 
   if (wifiConnected) {
-    // LED berkedip jika WiFi tersambung
     if (millis() - lastBlink >= 500) {
       lastBlink = millis();
       ledState = !ledState;
       digitalWrite(LED_WIFI, ledState);
     }
-    if (!client.connected()) {
-      reconnect();
-    }
+    if (!client.connected()) reconnect();
     client.loop();
   }
 }
