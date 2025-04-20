@@ -4,13 +4,13 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-// Konfigurasi MQTT
+// MQTT config
 const char* mqtt_server = "18.140.66.74";
 const int mqtt_port = 1883;
 const char* mqtt_client_id = "ESP32_Sender1";
 const char* senderID = "ESP32_Sender1";
 
-// Pin
+// Pin assignments
 const int callButton = 33;
 const int billButton = 25;
 const int resetButton = 26;
@@ -52,29 +52,29 @@ void setup() {
     Serial.print(".");
     delay(500);
   }
-  Serial.println("\n🕒 Waktu tersinkron!");
+  Serial.println("\n🕒 Time synchronized!");
 
-  resetSystem();  // Reset awal saat boot
+  resetSystem();  // Reset state on boot
 }
 
 void setup_wifi() {
   wifiManager.setTimeout(180);
   if (!wifiManager.autoConnect("Sender1_AP")) {
-    Serial.println("Gagal konek WiFi. Restart...");
+    Serial.println("❌ Failed to connect. Restarting...");
     ESP.restart();
   }
-  Serial.println("WiFi connected: " + WiFi.localIP().toString());
+  Serial.println("✅ WiFi connected: " + WiFi.localIP().toString());
 }
 
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("MQTT reconnect...");
+    Serial.print("🔄 MQTT reconnect...");
     if (client.connect(mqtt_client_id)) {
       Serial.println("connected");
       client.subscribe("waitress/reset");
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
+      Serial.print(" failed, rc=");
+      Serial.println(client.state());
       delay(5000);
     }
   }
@@ -101,7 +101,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   if ((String(fromID) == "ESP32_Receiver" || String(fromID) == "NodeRED" || String(fromID) == "unknown") && status == false) {
     if (String(type) == "call" || String(type) == "bill" || String(type) == "all") {
-      Serial.println("🔁 Reset command received");
+      Serial.println("🔁 Reset command received from network");
       resetSystem();
     }
   }
@@ -137,7 +137,7 @@ void resetSystem() {
 
   sendMessage("call", false, callCount, timeString);
   sendMessage("bill", false, billCount, timeString);
-  Serial.println("🔄 Reset System");
+  Serial.println("🔄 System reset");
 }
 
 void loop() {
